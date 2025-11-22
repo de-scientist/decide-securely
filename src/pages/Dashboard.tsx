@@ -1,74 +1,100 @@
+import { useEffect, useMemo, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { PollCard } from "@/components/PollCard";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Vote, Users, TrendingUp, Award } from "lucide-react";
+import { useWallet } from "@/contexts/WalletContext";
+import { usePoll } from "@/contexts/PollContext";
+import { supabase } from "@/integrations/supabase/client";
+
+type DashboardPoll = {
+  id: string;
+  title: string;
+  creator_address: string;
+  end_date: string;
+  status: string;
+  category: string;
+};
 
 const Dashboard = () => {
-  // Mock user data
-  const userPolls = [
-    {
-      id: "1",
-      title: "My community poll about future direction",
-      creator: "You",
-      endDate: "2024-12-25T23:59:59",
-      totalVotes: 45,
-      status: "active" as const,
-      category: "Community",
-    },
-  ];
+  const { address, isConnected } = useWallet();
+  const { getUserPolls, getUserVotes, polls } = usePoll();
+  const [userPolls, setUserPolls] = useState<DashboardPoll[]>([]);
+  const [votedPolls, setVotedPolls] = useState<DashboardPoll[]>([]);
+  const [votesCastCount, setVotesCastCount] = useState(0);
+  const [loading, setLoading] = useState(false);
 
-  const votedPolls = [
-    {
-      id: "2",
-      title: "Should we implement gasless voting?",
-      creator: "0x1234...5678",
-      endDate: "2024-12-31T23:59:59",
-      totalVotes: 1247,
-      status: "active" as const,
-      category: "Governance",
-    },
-    {
-      id: "4",
-      title: "Vote on new partnership with DeFi protocol",
-      creator: "0xdef0...1234",
-      endDate: "2024-11-20T18:00:00",
-      totalVotes: 2341,
-      status: "ended" as const,
-      category: "Partnerships",
-    },
-  ];
+  useEffect(() => {
+    const loadData = async () => {
+      if (!address) {
+        setUserPolls([]);
+        setVotedPolls([]);
+        setVotesCastCount(0);
+        return;
+      }
 
-  const stats = [
-    {
-      icon: Vote,
-      label: "Polls Created",
-      value: "3",
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
-    {
-      icon: Users,
-      label: "Votes Cast",
-      value: "12",
-      color: "text-accent",
-      bg: "bg-accent/10",
-    },
-    {
-      icon: TrendingUp,
-      label: "Participation Rate",
-      value: "87%",
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
-    {
-      icon: Award,
-      label: "Reputation Score",
-      value: "142",
-      color: "text-accent",
-      bg: "bg-accent/10",
-    },
-  ];
+      setLoading(true);
+      try {
+        const [userPollsResult, userVotes] = await Promise.all([
+          getUserPolls(address),
+          getUserVotes(address),
+        ]);
+
+        setUserPolls(userPollsResult ?? []);
+        setVotesCastCount(userVotes.length);
+
+        const pollIds = Array.from(new Set(userVotes.map((v) => v.poll_id)));
+        if (pollIds.length > 0) {
+          const { data } = await supabase
+            .from("polls")
+            .select("*")
+            .in("id", pollIds);
+          setVotedPolls(data ?? []);
+        } else {
+          setVotedPolls([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Recalculate when address changes or polls list updates (e.g. after creating a poll)
+    loadData();
+  }, [address, getUserPolls, getUserVotes, polls.length]);
+
+  const stats = useMemo(
+    () => [
+      {
+        icon: Vote,
+        label: "Polls Created",
+        value: userPolls.length.toString(),
+        color: "text-primary",
+        bg: "bg-primary/10",
+      },
+      {
+        icon: Users,
+        label: "Votes Cast",
+        value: votesCastCount.toString(),
+        color: "text-accent",
+        bg: "bg-accent/10",
+      },
+      {
+        icon: TrendingUp,
+        label: "Participation Rate",
+        value: userPolls.length > 0 ? "100%" : "0%",
+        color: "text-primary",
+        bg: "bg-primary/10",
+      },
+      {
+        icon: Award,
+        label: "Reputation Score",
+        value: (userPolls.length * 10 + votesCastCount).toString(),
+        color: "text-accent",
+        bg: "bg-accent/10",
+      },
+    ], [userPolls.length, votesCastCount]
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -106,11 +132,17 @@ const Dashboard = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold mb-1">Connected Wallet</h3>
-                <p className="text-white/80 font-mono">0x1234567890abcdef1234567890abcdef12345678</p>
+                <p className="text-white/80 font-mono">
+                  {address ?? "Not connected"}
+                </p>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
-                <span className="text-sm">Connected</span>
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    isConnected ? "bg-accent animate-pulse" : "bg-white/40"
+                  }`}
+                ></div>
+                <span className="text-sm">{isConnected ? "Connected" : "Disconnected"}</span>
               </div>
             </div>
           </Card>
@@ -123,10 +155,23 @@ const Dashboard = () => {
             </TabsList>
 
             <TabsContent value="created">
-              {userPolls.length > 0 ? (
+              {loading ? (
+                <Card className="p-12 text-center glass-card">
+                  <p className="text-muted-foreground">Loading your polls...</p>
+                </Card>
+              ) : userPolls.length > 0 ? (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {userPolls.map((poll) => (
-                    <PollCard key={poll.id} {...poll} />
+                    <PollCard
+                      key={poll.id}
+                      id={poll.id}
+                      title={poll.title}
+                      creator={poll.creator_address}
+                      endDate={poll.end_date}
+                      totalVotes={0}
+                      status={poll.status as "active" | "upcoming" | "ended"}
+                      category={poll.category}
+                    />
                   ))}
                 </div>
               ) : (
@@ -141,10 +186,23 @@ const Dashboard = () => {
             </TabsContent>
 
             <TabsContent value="voted">
-              {votedPolls.length > 0 ? (
+              {loading ? (
+                <Card className="p-12 text-center glass-card">
+                  <p className="text-muted-foreground">Loading your voting history...</p>
+                </Card>
+              ) : votedPolls.length > 0 ? (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {votedPolls.map((poll) => (
-                    <PollCard key={poll.id} {...poll} />
+                    <PollCard
+                      key={poll.id}
+                      id={poll.id}
+                      title={poll.title}
+                      creator={poll.creator_address}
+                      endDate={poll.end_date}
+                      totalVotes={0}
+                      status={poll.status as "active" | "upcoming" | "ended"}
+                      category={poll.category}
+                    />
                   ))}
                 </div>
               ) : (

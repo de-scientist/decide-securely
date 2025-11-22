@@ -8,9 +8,14 @@ import { useState } from "react";
 import { Plus, X, Calendar, Lock, Globe } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { usePoll } from "@/contexts/PollContext";
+import { useWallet } from "@/contexts/WalletContext";
 
 const CreatePoll = () => {
   const navigate = useNavigate();
+  const { createPoll } = usePoll();
+  const { address } = useWallet();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [options, setOptions] = useState(["", ""]);
@@ -37,16 +42,40 @@ const CreatePoll = () => {
     setOptions(newOptions);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!title || !description || options.some(opt => !opt) || !startDate || !endDate) {
+
+    if (!title || !description || options.some((opt) => !opt) || !startDate || !endDate) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    toast.success("Poll created successfully! 🎉");
-    setTimeout(() => navigate("/polls"), 1500);
+    if (!address) {
+      toast.error("Please connect your wallet to create a poll");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await createPoll({
+        title,
+        description,
+        options,
+        startDate,
+        endDate,
+        isPublic,
+        isTransparent: !isAnonymous,
+        category: "General",
+      });
+
+      // PollContext will handle success/error toasts; just navigate on success
+      navigate("/polls");
+    } catch (error) {
+      console.error(error);
+      // Errors are already surfaced via PollContext toast
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -219,8 +248,8 @@ const CreatePoll = () => {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" className="flex-1">
-                  Create Poll
+                <Button type="submit" className="flex-1" disabled={isSubmitting}>
+                  {isSubmitting ? "Creating..." : "Create Poll"}
                 </Button>
               </div>
             </Card>

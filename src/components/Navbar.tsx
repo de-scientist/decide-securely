@@ -2,14 +2,23 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Wallet, Vote, Menu, X } from "lucide-react";
 import { useState } from "react";
+import { useWallet } from "@/contexts/WalletContext";
 
 export const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
+  const { address, isConnected, connect, disconnect } = useWallet();
 
   const handleWalletConnect = () => {
-    setIsConnected(!isConnected);
+    if (!isConnected) {
+      connect();
+    } else {
+      disconnect();
+    }
   };
+
+  const displayAddress = address
+    ? `${address.slice(0, 6)}...${address.slice(-4)}`
+    : "Connect Wallet";
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-lg bg-background/80 border-b border-border/50">
@@ -39,7 +48,7 @@ export const Navbar = () => {
               className="gap-2"
             >
               <Wallet className="h-4 w-4" />
-              {isConnected ? "0x1234...5678" : "Connect Wallet"}
+              {displayAddress}
             </Button>
           </div>
 
@@ -82,7 +91,7 @@ export const Navbar = () => {
               className="w-full gap-2"
             >
               <Wallet className="h-4 w-4" />
-              {isConnected ? "0x1234...5678" : "Connect Wallet"}
+              {displayAddress}
             </Button>
           </div>
         )}

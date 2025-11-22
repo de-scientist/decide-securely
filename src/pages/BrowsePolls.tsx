@@ -4,71 +4,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, Filter, TrendingUp, Clock, Calendar } from "lucide-react";
-import { useState } from "react";
-
-// Mock data for demo
-const mockPolls = [
-  {
-    id: "1",
-    title: "Should we implement gasless voting for all future polls?",
-    creator: "0x1234...5678",
-    endDate: "2024-12-31T23:59:59",
-    totalVotes: 1247,
-    status: "active" as const,
-    category: "Governance",
-  },
-  {
-    id: "2",
-    title: "Next feature priority: Mobile app vs Advanced analytics",
-    creator: "0xabcd...efgh",
-    endDate: "2024-12-25T12:00:00",
-    totalVotes: 892,
-    status: "active" as const,
-    category: "Development",
-  },
-  {
-    id: "3",
-    title: "Community treasury allocation for Q1 2024",
-    creator: "0x9876...4321",
-    endDate: "2025-01-15T00:00:00",
-    totalVotes: 0,
-    status: "upcoming" as const,
-    category: "Treasury",
-  },
-  {
-    id: "4",
-    title: "Vote on new partnership with DeFi protocol",
-    creator: "0xdef0...1234",
-    endDate: "2024-11-20T18:00:00",
-    totalVotes: 2341,
-    status: "ended" as const,
-    category: "Partnerships",
-  },
-  {
-    id: "5",
-    title: "Should we increase staking rewards by 10%?",
-    creator: "0x5555...6666",
-    endDate: "2024-12-28T23:59:59",
-    totalVotes: 567,
-    status: "active" as const,
-    category: "Economics",
-  },
-  {
-    id: "6",
-    title: "New brand identity and logo design selection",
-    creator: "0x7777...8888",
-    endDate: "2025-01-01T00:00:00",
-    totalVotes: 0,
-    status: "upcoming" as const,
-    category: "Community",
-  },
-];
+import { useState, useEffect } from "react";
+import { usePoll } from "@/contexts/PollContext";
+import { supabase } from "@/integrations/supabase/client";
 
 const BrowsePolls = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
+  const { polls, loading } = usePoll();
+  const [totalVotesCast, setTotalVotesCast] = useState<number | null>(null);
 
-  const filteredPolls = mockPolls.filter((poll) => {
+  useEffect(() => {
+    const fetchTotalVotes = async () => {
+      const { count, error } = await supabase
+        .from("votes")
+        .select("id", { count: "exact", head: true });
+
+      if (!error) {
+        setTotalVotesCast(count ?? 0);
+      }
+    };
+
+    fetchTotalVotes();
+  }, []);
+
+  const filteredPolls = polls.filter((poll) => {
     const matchesSearch = poll.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTab = activeTab === "all" || poll.status === activeTab;
     return matchesSearch && matchesTab;
@@ -127,10 +87,23 @@ const BrowsePolls = () => {
               </TabsList>
 
               <TabsContent value={activeTab} className="mt-6">
-                {filteredPolls.length > 0 ? (
+                {loading ? (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">Loading polls...</p>
+                  </div>
+                ) : filteredPolls.length > 0 ? (
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredPolls.map((poll) => (
-                      <PollCard key={poll.id} {...poll} />
+                      <PollCard
+                        key={poll.id}
+                        id={poll.id}
+                        title={poll.title}
+                        creator={poll.creator_address}
+                        endDate={poll.end_date}
+                        totalVotes={0}
+                        status={poll.status as "active" | "upcoming" | "ended"}
+                        category={poll.category}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -147,18 +120,18 @@ const BrowsePolls = () => {
           {/* Stats */}
           <div className="mt-12 grid md:grid-cols-3 gap-6">
             <div className="p-6 rounded-lg bg-gradient-primary text-white">
-              <div className="text-3xl font-bold mb-1">{mockPolls.length}</div>
+              <div className="text-3xl font-bold mb-1">{polls.length}</div>
               <div className="text-white/80">Total Polls</div>
             </div>
             <div className="p-6 rounded-lg bg-accent/10 border border-accent/20">
               <div className="text-3xl font-bold mb-1 text-accent">
-                {mockPolls.filter((p) => p.status === "active").length}
+                {polls.filter((p) => p.status === "active").length}
               </div>
               <div className="text-muted-foreground">Active Now</div>
             </div>
             <div className="p-6 rounded-lg bg-primary/10 border border-primary/20">
               <div className="text-3xl font-bold mb-1 text-primary">
-                {mockPolls.reduce((sum, p) => sum + p.totalVotes, 0)}
+                {totalVotesCast ?? "-"}
               </div>
               <div className="text-muted-foreground">Total Votes Cast</div>
             </div>
